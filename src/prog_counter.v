@@ -3,12 +3,12 @@
 `include "defines.v"
 
 module prog_counter #(
-    parameter PC_WIDTH = `PC_WIDTH;
+    parameter PC_WIDTH = `PC_WIDTH
 )(
     input                           clk,
     input                           rst_n,
     input                           en,
-    output [`PC_WIDTH-1:0]          pc_out
+    output reg [`PC_WIDTH-1:0]      pc_out
 );
 
 always @(posedge clk or negedge rst_n) begin

@@ -4,12 +4,12 @@ module data_mem_bram (
 
     // Load
     input  wire        ld_en,
-    input  wire [31:0] ld_addr,   // byte address
+    input  wire [9:0] ld_addr,   // word addressed
     output reg  [63:0] ld_data,
 
     // Store
     input  wire        st_en,
-    input  wire [31:0] st_addr,
+    input  wire [9:0]  st_addr,
     input  wire [63:0] st_data
 );
 
