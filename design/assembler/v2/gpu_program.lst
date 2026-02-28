@@ -1,0 +1,7 @@
+// kernel: _Z10vadd_int16PsS_S_
+// addr  word      disassembly
+[000]  50010000  LD    r0, [r1]
+[001]  50230000  LD    r2, [r3]
+[002]  00420000  VADD  r4, r2, r0
+[003]  60054000  ST    [r5], r4
+[004]  F0000000  HALT
