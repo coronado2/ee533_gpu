@@ -13,10 +13,10 @@ module regfile (
     input  wire [`DATA_WIDTH-1:0]     wdata,
 
     // Read ports
-    input  wire [`REG_ADDR_WIDTH-1:0] r0addr,
-    input  wire [`REG_ADDR_WIDTH-1:0] r1addr,
-    output wire [`DATA_WIDTH-1:0]     r0data,
-    output wire [`DATA_WIDTH-1:0]     r1data
+    input  wire [`REG_ADDR_WIDTH-1:0] rs1addr,
+    input  wire [`REG_ADDR_WIDTH-1:0] rs2addr,
+    output wire [`DATA_WIDTH-1:0]     rs1data,
+    output wire [`DATA_WIDTH-1:0]     rs2data
 );
 
     localparam NUMREGS = (1 << `REG_ADDR_WIDTH);
@@ -25,8 +25,8 @@ module regfile (
     reg [`DATA_WIDTH-1:0] regs [0:(1<<`REG_ADDR_WIDTH)-1];
 
     // Read logic with write first bypass
-    assign r0data = (wena && (waddr == r0addr)) ? wdata : regs[r0addr];
-    assign r1data = (wena && (waddr == r1addr)) ? wdata : regs[r1addr];
+    assign rs1data = (wena && (waddr == rs1addr)) ? wdata : regs[rs1addr];
+    assign rs2data = (wena && (waddr == rs2addr)) ? wdata : regs[rs2addr];
 
     integer i;
 

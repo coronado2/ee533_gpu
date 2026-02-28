@@ -8,7 +8,7 @@ module gpu_core (
 );
 
 ///////////////////////////////////////////////////////////////////////////////
-// Pipeline & state registers (declare up front to avoid implicit-wire issues)
+// Pipeline & state registers 
 ///////////////////////////////////////////////////////////////////////////////
 reg [63:0] rs1_data_r, rs2_data_r;
 reg [3:0]  opcode_r, dtype_r, rd_r;
@@ -41,7 +41,7 @@ pc u_pc (
 
 inst_mem u_inst_mem (
     .clka(clk),
-    .addra(pc[9:2]),   // word address (assuming 256 depth)
+    .addra(pc[9:0]),
     .douta(instruction)
 );
 */
@@ -94,7 +94,7 @@ control_unit u_ctrl (
 */
 
 ///////////////////////////////////////////////////////////////////////////////
-// Behavioral Register File (16 × 64-bit)
+// Behavioral Register File (16 64-bit)
 ///////////////////////////////////////////////////////////////////////////////
 reg [63:0] regfile [0:15];
 
