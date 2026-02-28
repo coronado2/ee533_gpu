@@ -9,6 +9,7 @@ module control_unit (
     output wire [3:0]  rs2,
     output wire [63:0] imm,
     output wire        is_ld,
+    output wire        is_vfma,
     output wire        is_st,
     output wire        is_halt,
     output wire        reg_write  // true when instruction writes register file
@@ -31,9 +32,10 @@ assign rs2    = instruction[15:12];
 
 assign imm = {{52{instruction[11]}}, instruction[11:0]};
 
-assign is_ld  = (opcode == OP_LD);
-assign is_st  = (opcode == OP_ST);
-assign is_halt= (opcode == OP_HALT);
+assign is_ld  =  (opcode == OP_LD);
+assign is_vfma = (opcode == OP_VFMA);
+assign is_st  =  (opcode == OP_ST);
+assign is_halt=  (opcode == OP_HALT);
 
 // Reg Write for EX and LD
 assign reg_write = (opcode == OP_VADD) | (opcode == OP_VSUB) |
