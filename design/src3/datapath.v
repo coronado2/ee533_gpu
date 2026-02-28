@@ -7,10 +7,10 @@
 //
 // Hierarchy:
 //   datapath
-//   ├── inst_mem          128 x 32-bit RAM  (dual-port: host wr / GPU rd)
-//   ├── generic_regfile    16 x 64-bit RAM  (2R/1W for GPU)
-//   ├── data_mem          256 x 64-bit RAM  (3-port: GPU ST, GPU LD, host rd)
-//   └── gpu_core          pipeline, ALU, tensor unit
+//   inst_mem          128 x 32-bit RAM  (dual-port: host wr / GPU rd)
+//   generic_regfile    16 x 64-bit RAM  (2R/1W for GPU)
+//   data_mem          256 x 64-bit RAM  (3-port: GPU ST, GPU LD, host rd)
+//   gpu_core          pipeline, ALU, tensor unit
 // =========================================================================
 `timescale 1ns/1ps
 `default_nettype none
