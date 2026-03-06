@@ -11,7 +11,7 @@
 // Register map (all 32-bit, base = `TOP_BLOCK_ADDR):
 //
 //   SOFTWARE REGS  (host writes)          HARDWARE REGS  (host reads)
-//   ─────────────────────────────────     ──────────────────────────────
+//  
 //   offset 0  GPU_RST        [0]          offset 0  HW_HALTED     [0]
 //   offset 1  GPU_START      [0]          offset 1  HW_PC         [6:0]
 //   offset 2  IMEM_WR_EN     [0]          offset 2  HW_RESULT_LO  [31:0]
@@ -63,7 +63,7 @@ module top #(
 );
 
 // -------------------------------------------------------------------------
-// Software registers (host → GPU)
+// Software registers (host â GPU)
 // -------------------------------------------------------------------------
 wire [31:0] sw_gpu_rst;          // [0] hold GPU in reset
 wire [31:0] sw_gpu_start;        // [0] start execution
@@ -77,7 +77,7 @@ wire [31:0] sw_dmem_wr_data_hi;  // [31:0] dmem write data high
 wire [31:0] sw_dmem_rd_addr;     // [7:0] dmem readback address
 
 // -------------------------------------------------------------------------
-// Hardware registers (GPU → host)
+// Hardware registers (GPU â host)
 // -------------------------------------------------------------------------
 reg [31:0] hw_halted;        // GPU halted flag
 reg [31:0] hw_pc;            // current PC

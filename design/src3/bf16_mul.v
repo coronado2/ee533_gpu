@@ -86,7 +86,7 @@ always @(posedge clk or negedge rst_n) begin
 end
 
 // ?? stage 2: multiply mantissas, compute exponent ????????????????????????????
-// 8×8 unsigned product ? 16 bits
+// 8Ã—8 unsigned product ? 16 bits
 wire [15:0] mant_product = s1_ma_full * s1_mb_full;
 
 // Exponent: e_a + e_b - 127 (remove one bias)

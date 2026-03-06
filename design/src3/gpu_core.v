@@ -1,4 +1,15 @@
 // gpu_core.v
+// =========================================================================
+// FIX 1: rd_rr only latches rd_r when is_ld_r is high.
+// FIX 2: Writeback for loads uses dmem_ld_data directly.
+// FIX 3: tensor_rd_r latches rd_r at tensor_start, held until tensor_done.
+// FIX 4: tensor_done_hold stalls one extra cycle after tensor_done.
+// FIX 5: rf_acc_addr uses decode-stage rd (one cycle ahead of EX).
+//         acc_lat_r registers rf_acc_data so it is stable at tensor_start.
+//         The regfile write-bypass on the acc port ensures the value is
+//         captured even when the LD that writes rd completes the same cycle
+//         FMAC is being decoded.
+// =========================================================================
 `timescale 1ns/1ps
 `default_nettype none
 
@@ -7,12 +18,8 @@ module gpu_core #(
 ) (
     input  wire        clk,
     input  wire        rst_n,
-
-    // Instruction memory port
     output wire [6:0]  imem_addr,
     input  wire [31:0] imem_data,
-
-    // Register file port
     output wire [3:0]  rf_rs1_addr,
     input  wire [63:0] rf_rs1_data,
     output wire [3:0]  rf_rs2_addr,
@@ -20,39 +27,27 @@ module gpu_core #(
     output wire        rf_we,
     output wire [3:0]  rf_wr_addr,
     output wire [63:0] rf_wr_data,
-
-    // Data memory port
+    output wire [3:0]  rf_acc_addr,
+    input  wire [63:0] rf_acc_data,
     output reg         dmem_ld_en,
     output reg  [7:0]  dmem_ld_addr,
     input  wire [63:0] dmem_ld_data,
-
     output reg         dmem_st_en,
     output reg  [7:0]  dmem_st_addr,
     output reg  [63:0] dmem_st_data,
-
-    // Status outputs (used by testbench)
     output wire        halted,
     output wire [31:0] pc_out
 );
 
-// ---------------------------------------------------------------------------
-// Pipeline registers
-// ---------------------------------------------------------------------------
 reg [63:0] rs1_data_r, rs2_data_r;
 reg [3:0]  opcode_r, dtype_r, rd_r;
 reg        reg_write_r;
 reg        is_ld_r, is_st_r;
 
-// ---------------------------------------------------------------------------
-// Stall / halted
-// ---------------------------------------------------------------------------
 wire stall;
 reg  halted_r;
 assign halted = halted_r;
 
-// ---------------------------------------------------------------------------
-// Control unit
-// ---------------------------------------------------------------------------
 wire [3:0] opcode, dtype, rd, rs1, rs2;
 wire       is_ld, is_st, is_halt, reg_write;
 
@@ -69,13 +64,7 @@ control_unit u_ctrl (
     .reg_write   (reg_write)
 );
 
-// ---------------------------------------------------------------------------
-// Program Counter
-// Testbench accesses dut.u_gpu.u_pc.pc_out and force/releases it.
-// pc_out is 32-bit; we use [6:0] slice for the 128-entry inst_mem address.
-// ---------------------------------------------------------------------------
-wire [31:0] pc_next = halted_r ? pc_out              // freeze when halted
-                                : pc_out + 32'd1;
+wire [31:0] pc_next = halted_r ? pc_out : pc_out + 32'd1;
 
 pc u_pc (
     .clk    (clk),
@@ -85,13 +74,13 @@ pc u_pc (
     .pc_out (pc_out)
 );
 
-assign imem_addr = pc_out[6:0];
-
-// ---------------------------------------------------------------------------
-// Register file address/data
-// ---------------------------------------------------------------------------
+assign imem_addr   = pc_out[6:0];
 assign rf_rs1_addr = rs1;
 assign rf_rs2_addr = rs2;
+
+// FIX 5: read rd one cycle early (decode stage) so the registered
+//         value is ready when tensor_start fires in EX stage.
+assign rf_acc_addr = rd;
 
 reg        wb_we;
 reg [3:0]  wb_rd;
@@ -101,9 +90,6 @@ assign rf_we      = wb_we & (wb_rd != 4'hF);
 assign rf_wr_addr = wb_rd;
 assign rf_wr_data = wb_data;
 
-// ---------------------------------------------------------------------------
-// Integer SIMD ALU
-// ---------------------------------------------------------------------------
 wire [63:0] int_result;
 
 exec_int16x4 u_exec_int (
@@ -113,11 +99,9 @@ exec_int16x4 u_exec_int (
     .result (int_result)
 );
 
-// ---------------------------------------------------------------------------
-// Tensor unit
-// ---------------------------------------------------------------------------
 wire tensor_op_r = (opcode_r == 4'h2) || (opcode_r == 4'h3);
 reg  tensor_busy;
+reg  tensor_done_hold;
 
 wire [2:0] tensor_op_sel = (opcode_r == 4'h2) ? 3'b010 :
                             (opcode_r == 4'h3) ? 3'b011 :
@@ -128,10 +112,13 @@ wire tensor_start_wire = tensor_op_r & ~tensor_busy;
 wire [63:0] tensor_result;
 wire        tensor_done;
 
+// FIX 5: register rf_acc_data so it is stable at tensor_start.
+//         rf_acc_addr=rd (decode), so this captures the accumulator
+//         the cycle before FMAC enters EX.
 reg [63:0] acc_lat;
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) acc_lat <= 64'd0;
-    else        acc_lat <= rf_rs2_data;
+    else        acc_lat <= rf_acc_data;
 end
 
 tensor_bf16_4lane u_tensor (
@@ -146,15 +133,24 @@ tensor_bf16_4lane u_tensor (
     .done    (tensor_done)
 );
 
+// FIX 3: preserve rd at tensor launch
+reg [3:0] tensor_rd_r;
 always @(posedge clk or negedge rst_n) begin
-    if (!rst_n)                 tensor_busy <= 1'b0;
-    else if (tensor_start_wire) tensor_busy <= 1'b1;
-    else if (tensor_done)       tensor_busy <= 1'b0;
+    if (!rst_n)                 tensor_rd_r <= 4'd0;
+    else if (tensor_start_wire) tensor_rd_r <= rd_r;
 end
 
-// ---------------------------------------------------------------------------
-// Execute stage latch
-// ---------------------------------------------------------------------------
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        tensor_busy      <= 1'b0;
+        tensor_done_hold <= 1'b0;
+    end else begin
+        if (tensor_start_wire) tensor_busy <= 1'b1;
+        else if (tensor_done)  tensor_busy <= 1'b0;
+        tensor_done_hold <= tensor_done;
+    end
+end
+
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         rs1_data_r  <= 64'd0;  rs2_data_r  <= 64'd0;
@@ -173,9 +169,6 @@ always @(posedge clk or negedge rst_n) begin
     end
 end
 
-// ---------------------------------------------------------------------------
-// Data memory
-// ---------------------------------------------------------------------------
 always @(*) begin
     dmem_ld_en   = 1'b0;
     dmem_ld_addr = 8'd0;
@@ -197,50 +190,36 @@ always @(*) begin
     endcase
 end
 
-// ---------------------------------------------------------------------------
-// Load pipeline
-// ---------------------------------------------------------------------------
+// FIX 1 + FIX 2: LD writeback path
 reg        is_ld_rr;
-reg [63:0] dmem_ld_data_r;
 reg [3:0]  rd_rr;
 reg        reg_write_rr;
 
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-        is_ld_rr       <= 1'b0;
-        dmem_ld_data_r <= 64'd0;
-        rd_rr          <= 4'd0;
-        reg_write_rr   <= 1'b0;
+        is_ld_rr     <= 1'b0;
+        rd_rr        <= 4'd0;
+        reg_write_rr <= 1'b0;
     end else begin
-        is_ld_rr       <= is_ld_r;
-        dmem_ld_data_r <= dmem_ld_data;
-        rd_rr          <= rd_r;
-        reg_write_rr   <= reg_write_r & is_ld_r;
+        is_ld_rr     <= is_ld_r;
+        if (is_ld_r) rd_rr <= rd_r;
+        reg_write_rr <= reg_write_r & is_ld_r;
     end
 end
 
-// ---------------------------------------------------------------------------
-// Integer ALU result register
-// ---------------------------------------------------------------------------
 reg [63:0] wb_alu;
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) wb_alu <= 64'd0;
     else        wb_alu <= int_result;
 end
 
-// ---------------------------------------------------------------------------
-// HALT
-// ---------------------------------------------------------------------------
 always @(posedge clk or negedge rst_n) begin
-    if (!rst_n)        halted_r <= 1'b0;
-    else if (is_halt)  halted_r <= 1'b1;
+    if (!rst_n) halted_r <= 1'b0;
+    else if (is_halt) halted_r <= 1'b1;
 end
 
-assign stall = halted_r | tensor_busy;
+assign stall = halted_r | tensor_busy | tensor_done_hold;
 
-// ---------------------------------------------------------------------------
-// Writeback arbitration
-// ---------------------------------------------------------------------------
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         wb_we   <= 1'b0;
@@ -250,15 +229,15 @@ always @(posedge clk or negedge rst_n) begin
         if (reg_write_rr) begin
             wb_we   <= 1'b1;
             wb_rd   <= rd_rr;
-            wb_data <= dmem_ld_data_r;
+            wb_data <= dmem_ld_data;
         end else if (tensor_done) begin
             wb_we   <= 1'b1;
-            wb_rd   <= rd_r;
+            wb_rd   <= tensor_rd_r;
             wb_data <= tensor_result;
         end else if (reg_write_r & ~is_ld_r) begin
             wb_we   <= 1'b1;
             wb_rd   <= rd_r;
-            wb_data <= wb_alu;
+            wb_data <= int_result;
         end else begin
             wb_we   <= 1'b0;
             wb_rd   <= 4'd0;
